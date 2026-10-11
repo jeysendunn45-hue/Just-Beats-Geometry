@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JUST-BEATS-GEOMETRY</title>
+<style>
+:root{color-scheme:dark;--cyan:#45f3ff;--pink:#ff3bba;--bg:#070811}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% 0%,#19112d,var(--bg) 65%);color:#f5f7ff;font-family:system-ui,Segoe UI,sans-serif;min-height:100vh;display:grid;place-items:center}
+main{width:min(100%,1050px);padding:16px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:clamp(1.3rem,4vw,2.3rem);line-height:1;margin:0;letter-spacing:.08em;text-shadow:0 0 18px #45f3ff66}h1 span{color:var(--pink)}.sub{color:#9da4c7;font-size:.85rem;margin-top:7px}
+.hud{display:flex;gap:14px;color:#cbd1f4;font-size:.9rem}.hud b{color:var(--cyan)}
+.stage{position:relative;border:1px solid #5a5d8c;border-radius:12px;overflow:hidden;box-shadow:0 0 35px #5d2aff25;background:#080a17}
+canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;outline:none}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#070811b8;backdrop-filter:blur(4px)}
+.panel{max-width:560px}.panel h2{font-size:clamp(2rem,6vw,4rem);margin:0 0 8px;letter-spacing:.07em;text-shadow:0 0 22px #ff3bba55}.panel p{color:#c4c9e8;line-height:1.6}
+button{font:inherit;font-weight:800;letter-spacing:.06em;border:0;border-radius:8px;padding:12px 20px;cursor:pointer;color:#080914;background:var(--cyan);box-shadow:0 0 20px #45f3ff33}button:hover{filter:brightness(1.15);transform:translateY(-1px)}button.secondary{background:#292642;color:white;border:1px solid #5b5687;margin-left:8px}.hidden{display:none!important}
+.bottom{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#969cbd;font-size:.8rem;padding:11px 2px}.key{color:#fff;background:#25243a;border:1px solid #44415f;border-radius:4px;padding:2px 6px}
+@media(max-width:600px){main{padding:8px}.hud{font-size:.78rem;gap:8px}.bottom{font-size:.72rem}}
+</style>
+</head>
+<body><main>
+<div class="top"><div><h1>JUST-BEATS-<span>GEOMETRY</span></h1><div class="sub">DODGE THE BEAT. RIDE THE CHAOS.</div></div><div class="hud"><div>STAGE <b id="stage">01</b></div><div>PROGRESS <b id="progress">0%</b></div><div>BEST <b id="best">0%</b></div></div></div>
+<div class="stage"><canvas id="game" width="960" height="540" tabindex="0" aria-label="Just Beats Geometry game"></canvas>
+<div class="overlay" id="overlay"><div class="panel"><h2 id="headline">FEEL THE<br>BEAT.</h2><p id="message">A rhythm platformer collides with a geometric bullet storm. Jump the gaps, dodge the patterns, and survive the drop.</p><button id="start">START RUN</button><button id="how" class="secondary">HOW TO PLAY</button></div></div>
+</div>
+<div class="bottom"><div><span class="key">SPACE</span> / <span class="key">↑</span> jump · <span class="key">← →</span> move · <span class="key">X</span> dash · <span class="key">P</span> pause</div><div>Original browser game prototype · Sound synthesized in-game</div></div>
+</main>
+<script>
+(()=>{
+const c=document.getElementById('game'),ctx=c.getContext('2d'),overlay=document.getElementById('overlay');
+const $=id=>document.getElementById(id);
+const W=960,H=540,ground=445;
+let mode='menu',stage=0,progress=0,best=+(localStorage.getItem('jbg-best')||0),time=0,last=0,beat=0,shake=0,particles=[],hazards=[],platforms=[],rings=[],keys={},player,muted=false;
+$('best').textContent=best+'%';
+const levels=[
+{name:'NEON PULSE',bpm:112,duration:42,colors:['#45f3ff','#ff3bba'],intro:'Find the rhythm. The shapes are only getting started.'},
+{name:'SHATTER BEAT',bpm:138,duration:48,colors:['#b6ff48','#ff4d6d'],intro:'Faster beats. Tighter gaps. Keep moving.'},
+{name:'FINAL OVERDRIVE',bpm:164,duration:54,colors:['#bb82ff','#45f3ff'],intro:'The final drop. Everything comes at once.'}
+];
+function audioBeat(){if(muted)return;try{const ac=audio();const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=beat%4===0?105:beat%2===0?75:55;g.gain.setValueAtTime(.0001,ac.currentTime);g.gain.exponentialRampToValueAtTime(beat%4===0?.055:.025,ac.currentTime+.008);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+.11);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+.12)}catch(e){}}
+let acx;function audio(){if(!acx)acx=new(window.AudioContext||window.webkitAudioContext)();if(acx.state==='suspended')acx.resume();return acx}
+function reset(){time=0;progress=0;beat=0;shake=0;particles=[];hazards=[];rings=[];platforms=[];player={x:170,y:ground-26,vx:0,vy:0,size:26,grounded:true,dash:0,inv:0};mode='playing';overlay.classList.add('hidden');$('stage').textContent=String(stage+1).padStart(2,'0');c.focus()}
+function show(title,msg,button='PLAY AGAIN'){mode='dead';overlay.classList.remove('hidden');$('headline').innerHTML=title;$('message').textContent=msg;$('start').textContent=button;$('how').classList.add('hidden')}
+function begin(){if(mode==='menu'||mode==='dead'||mode==='win'){if(mode==='win'&&stage<2)stage++;else if(mode==='win')stage=0;reset()}else if(mode==='help'){mode='menu';overlay.classList.remove('hidden');$('headline').innerHTML='FEEL THE<br>BEAT.';$('message').textContent='A rhythm platformer collides with a geometric bullet storm. Jump the gaps, dodge the patterns, and survive the drop.';$('start').textContent='START RUN';$('how').classList.remove('hidden')}}
+$('start').onclick=()=>{if(mode==='paused'){mode='playing';overlay.classList.add('hidden');last=performance.now()}else begin()};
+$('how').onclick=()=>{mode='help';$('headline').textContent='HOW TO PLAY';$('message').textContent='SPACE or UP jumps. LEFT and RIGHT move. X dashes through danger briefly. P pauses. Avoid pink hazards, jump floor gaps, and survive until the track ends.';$('start').textContent='GOT IT';$('how').classList.add('hidden')};
+function jump(){if(mode!=='playing')return;if(player.grounded){player.vy=-590;player.grounded=false;burst(player.x,player.y+10,8,levels[stage].colors[0]);}}
+function dash(){if(mode==='playing'&&player.dash<=0){player.dash=.2;player.inv=.24;player.vx=player.x<W*.58?690: -690;burst(player.x,player.y,12,levels[stage].colors[1]);}}
+window.addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys[e.key.toLowerCase()]=true;if((e.code==='Space'||e.key==='ArrowUp')&&!e.repeat)jump();if(e.key.toLowerCase()==='x'&&!e.repeat)dash();if(e.key.toLowerCase()==='p'&&mode==='playing'){mode='paused';overlay.classList.remove('hidden');$('headline').textContent='PAUSED';$('message').textContent='Catch your breath. The beat will be waiting.';$('start').textContent='RESUME';$('how').classList.add('hidden')}else if(e.key.toLowerCase()==='p'&&mode==='paused'){$('start').click()}});
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+c.addEventListener('pointerdown',()=>{if(mode==='playing')jump();else if(mode==='menu'||mode==='dead')begin()});
+function burst(x,y,n,color){for(let i=0;i<n;i++){let a=Math.random()*Math.PI*2,s=50+Math.random()*240;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.25+Math.random()*.45,color,size:2+Math.random()*4})}}
+function spawn(){const lv=levels[stage],type=Math.random();if(type<.44){hazards.push({type:'block',x:W+30,y:ground-34,w:28+Math.random()*24,h:34,spd:300+stage*45,color:lv.colors[1]})}else if(type<.76){let y=120+Math.random()*230;hazards.push({type:'orb',x:W+25,y,r:13+Math.random()*7,spd:270+stage*48,amp:25+Math.random()*35,phase:Math.random()*7,color:lv.colors[1],base:y})}else{hazards.push({type:'wall',x:W+20,y:ground-90,w:22,h:90,spd:310+stage*45,color:lv.colors[1]});hazards.push({type:'orb',x:W+125,y:155+Math.random()*100,r:14,spd:280+stage*45,amp:38,phase:Math.random()*6,color:lv.colors[0],base:200})}}
+let spawnClock=0,beatClock=0,gapClock=0,gapX=-999;
+function update(dt){if(mode!=='playing')return;const lv=levels[stage];time+=dt;progress=Math.min(100,Math.floor(time/lv.duration*100));$('progress').textContent=progress+'%';best=Math.max(best,progress);$('best').textContent=best+'%';localStorage.setItem('jbg-best',best);
+beatClock+=dt;const beatLen=60/lv.bpm;if(beatClock>=beatLen){beatClock-=beatLen;beat++;audioBeat();rings.push({x:player.x,y:player.y,r:10,life:.6,color:lv.colors[beat%2]});shake=beat%4===0?3:1}
+spawnClock+=dt;if(spawnClock>(beat%2===0?beatLen*1.65:beatLen*1.25)){spawnClock=0;if(time>1)spawn()}
+gapClock+=dt;if(gapClock>5.4-stage*.45){gapClock=0;gapX=W+50}
+const move=380;player.vx=player.dash>0?player.vx:((keys['arrowright']||keys['d']?move:0)-(keys['arrowleft']||keys['a']?move:0));player.x+=player.vx*dt;player.x=Math.max(25,Math.min(W-25,player.x));player.vy+=1500*dt;player.y+=player.vy*dt;
+if(player.y+player.size/2>=ground&&player.x<gapX+92&&player.x>gapX-4){if(player.y>ground+35){die()}}else if(player.y+player.size/2>=ground){player.y=ground-player.size/2;player.vy=0;player.grounded=true}else player.grounded=false;
+if(gapX>W+120)gapX=-999;else gapX-=300*dt;
+if(player.y>H+50)die();if(player.dash>0)player.dash-=dt;if(player.inv>0)player.inv-=dt;
+for(const h of hazards){h.x-=h.spd*dt;if(h.type==='orb')h.y=h.base+Math.sin(time*4+h.phase)*h.amp;
+const px=player.x,py=player.y,s=player.size*.38;let hit=false;if(h.type==='orb')hit=Math.hypot(px-h.x,py-h.y)<s+h.r*.75;else hit=px+s>h.x&&px-s<h.x+h.w&&py+s>h.y&&py-s<h.y+h.h;if(hit&&player.inv<=0)die()}
+hazards=hazards.filter(h=>h.x>-100);for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.98;p.vy+=180*dt;p.life-=dt}particles=particles.filter(p=>p.life>0);for(const r of rings){r.r+=150*dt;r.life-=dt}rings=rings.filter(r=>r.life>0);shake=Math.max(0,shake-25*dt);
+if(time>=lv.duration){mode='win';overlay.classList.remove('hidden');$('headline').textContent=stage<2?'STAGE CLEAR!':'YOU SURVIVED.';$('message').textContent=stage<2?'You rode the drop. Ready for the next track?':'All three stages cleared. That was pure rhythm chaos.';$('start').textContent=stage<2?'NEXT STAGE':'PLAY AGAIN';$('how').classList.add('hidden')}}
+function die(){if(mode!=='playing')return;burst(player.x,player.y,25,levels[stage].colors[1]);shake=12;show('BEAT DROPPED.', 'You reached '+progress+'%. Learn the pattern, then hit the beat again.','RETRY')}
+function draw(){const lv=levels[stage],col=lv.colors;ctx.save();if(shake)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);ctx.fillStyle='#080a17';ctx.fillRect(0,0,W,H);
+const pulse=1-beatClock/(60/lv.bpm);let grd=ctx.createRadialGradient(W*.52,220,15,W*.52,220,520);grd.addColorStop(0,col[0]+(pulse>.85?'20':'08'));grd.addColorStop(1,'#080a17');ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+ctx.strokeStyle='#262744';ctx.lineWidth=1;for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+for(let i=0;i<24;i++){let x=(i*71-time*75%(W+100)+W+100)%(W+100),y=(i*137)%380;ctx.globalAlpha=.15+(.15*pulse);ctx.fillStyle=col[i%2];ctx.fillRect(x,y,2,2)}ctx.globalAlpha=1;
+ctx.fillStyle='#111329';ctx.fillRect(0,ground,W,H-ground);ctx.strokeStyle=col[0];ctx.lineWidth=3;ctx.shadowBlur=15;ctx.shadowColor=col[0];ctx.beginPath();ctx.moveTo(0,ground);ctx.lineTo(Math.max(0,gapX),ground);ctx.moveTo(Math.min(W,gapX+92),ground);ctx.lineTo(W,ground);ctx.stroke();ctx.shadowBlur=0;
+if(gapX>-900){ctx.fillStyle='#ff3bba22';ctx.fillRect(gapX,ground,92,H-ground);ctx.strokeStyle=col[1];ctx.beginPath();ctx.moveTo(gapX,ground);ctx.lineTo(gapX+92,ground);ctx.stroke()}
+for(const h of hazards){ctx.save();ctx.shadowBlur=18;ctx.shadowColor=h.color;ctx.strokeStyle=h.color;ctx.fillStyle=h.color+'22';ctx.lineWidth=3;if(h.type==='orb'){ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(h.x,h.y,h.r+7,0,Math.PI*2);ctx.globalAlpha=.35;ctx.stroke()}else if(h.type==='wall'){ctx.fillRect(h.x,h.y,h.w,h.h);ctx.strokeRect(h.x,h.y,h.w,h.h);ctx.beginPath();ctx.moveTo(h.x-12,h.y+12);ctx.lineTo(h.x+h.w+12,h.y+12);ctx.stroke()}else{ctx.translate(h.x+h.w/2,h.y+h.h/2);ctx.rotate(.2);ctx.fillRect(-h.w/2,-h.h/2,h.w,h.h);ctx.strokeRect(-h.w/2,-h.h/2,h.w,h.h)}ctx.restore()}
+for(const r of rings){ctx.globalAlpha=Math.max(0,r.life/.6);ctx.strokeStyle=r.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.stroke()}ctx.globalAlpha=1;
+for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/.7);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size)}ctx.globalAlpha=1;
+if(player){ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.grounded?Math.sin(time*lv.bpm/60*Math.PI)*.08:player.vy*.00035);ctx.shadowBlur=player.inv>0?28:18;ctx.shadowColor=col[0];ctx.fillStyle=player.inv>0?'#ffffff':col[0];ctx.fillRect(-player.size/2,-player.size/2,player.size,player.size);ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(-player.size/2,-player.size/2,player.size,player.size);ctx.fillStyle='#101225';ctx.fillRect(-7,-4,4,5);ctx.fillRect(3,-4,4,5);ctx.restore()}
+ctx.shadowBlur=0;ctx.fillStyle='#f2f4ff';ctx.font='bold 15px system-ui';ctx.fillText(lv.name,24,30);ctx.fillStyle='#9299bd';ctx.font='12px system-ui';ctx.fillText('BPM '+lv.bpm,24,49);
+ctx.fillStyle='#292b47';ctx.fillRect(24,65,180,4);ctx.fillStyle=col[0];ctx.fillRect(24,65,180*progress/100,4);ctx.restore()}
+function frame(now){let dt=Math.min(.033,(now-last)/1000||0);last=now;update(dt);draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
+})();
+</script></body></html>
